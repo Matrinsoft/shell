@@ -1,0 +1,93 @@
+name: Build RPM and Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract package metadata
+        id: meta
+        run: |
+          SPEC=$(ls *.spec 2>/dev/null | head -1)
+          if [ -z "$SPEC" ]; then
+            echo "::error::No spec file found"
+            exit 1
+          fi
+          NAME=$(grep -m1 '^Name:' "$SPEC" | sed 's/^Name:[[:space:]]*//' | tr -d '\r')
+          VERSION=$(grep -m1 '^Version:' "$SPEC" | sed 's/^Version:[[:space:]]*//' | tr -d '\r')
+          echo "spec=$SPEC" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "spec=$SPEC, name=$NAME, version=$VERSION"
+
+      - name: Build RPM in Fedora container
+        run: |
+          mkdir -p rpm-out
+          docker run --rm \
+            -v "$PWD:/src" \
+            -v "$PWD/rpm-out:/out" \
+            registry.fedoraproject.org/fedora:44 bash -c '
+              set -euo pipefail
+              dnf install -y --setopt=install_weak_deps=False \
+                rpm-build rpmdevtools dnf-plugins-core
+              rpmdev-setuptree
+              cd /src
+              SPEC=$(ls *.spec | head -1)
+              cp "$SPEC" ~/rpmbuild/SPECS/
+              for f in *.patch; do
+                [ -f "$f" ] && cp "$f" ~/rpmbuild/SOURCES/
+              done
+              for f in *; do
+                [ -f "$f" ] || continue
+                case "$f" in
+                  *.spec|*.patch) continue ;;
+                esac
+                cp "$f" ~/rpmbuild/SOURCES/
+              done
+              cd ~/rpmbuild/SPECS
+              spectool -g -R *.spec || echo "spectool: some sources may already be local"
+              dnf builddep -y *.spec
+              rpmbuild -ba *.spec
+              cp ~/rpmbuild/SRPMS/*.src.rpm /out/ 2>/dev/null || true
+              find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} /out/ \; 2>/dev/null || true
+              ls -la /out/
+            '
+
+      - name: Create tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.meta.outputs.version }}"
+          TAG="v${VERSION}"
+          echo "Tag: $TAG"
+          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+            git tag "$TAG"
+            git push origin "$TAG"
+            echo "Created tag $TAG"
+          else
+            echo "Tag $TAG already exists"
+          fi
+          shopt -s nullglob
+          rpms=(rpm-out/*.rpm)
+          if [ ${#rpms[@]} -eq 0 ]; then
+            echo "::warning::No rpm files produced"
+            exit 0
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${rpms[@]}" --clobber
+          else
+            gh release create "$TAG" "${rpms[@]}" --generate-notes
+          fi
+          echo "Published release $TAG"
