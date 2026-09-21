@@ -1,0 +1,80 @@
+name: Publish to OBS
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  obs-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish source and spec to OBS
+        env:
+          OBS_USER: ${{ secrets.OBS_USER }}
+          OBS_PASSWORD: ${{ secrets.OBS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          API="https://api.opensuse.org"
+          PROJECT="home:LingmoOS:5.0"
+
+          SPEC=$(find . -maxdepth 1 -name "*.spec" | head -1 | sed 's|^\./||')
+          if [ -z "$SPEC" ]; then
+            echo "::error::No spec file found"
+            exit 1
+          fi
+
+          NAME=$(grep -m1 '^Name:' "$SPEC" | sed 's/^Name:[[:space:]]*//' | tr -d '\r')
+          if [ -z "$NAME" ] || echo "$NAME" | grep -q '%{'; then
+            NAME=$(echo "$SPEC" | sed 's/\.spec$//')
+          fi
+          echo "Package: $NAME (spec: $SPEC)"
+
+          echo "Creating OBS package $NAME ..."
+          curl -sS -u "$OBS_USER:$OBS_PASSWORD" -X PUT \
+            "$API/source/$PROJECT/$NAME/_meta" \
+            -H "Content-Type: application/xml" \
+            --data-binary "<package name=\"$NAME\" project=\"$PROJECT\"><title>$NAME</title><description>$NAME</description></package>"
+
+          echo "Uploading spec: $SPEC"
+          curl -sS -u "$OBS_USER:$OBS_PASSWORD" -X PUT \
+            "$API/source/$PROJECT/$NAME/$SPEC" \
+            -H "Content-Type: application/octet-stream" -T "$SPEC"
+
+          for p in *.patch; do
+            [ -f "$p" ] || continue
+            echo "Uploading patch: $p"
+            curl -sS -u "$OBS_USER:$OBS_PASSWORD" -X PUT \
+              "$API/source/$PROJECT/$NAME/$p" \
+              -H "Content-Type: application/octet-stream" -T "$p"
+          done
+
+          for f in *; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              *.spec|*.patch) continue ;;
+            esac
+            echo "Uploading extra: $f"
+            curl -sS -u "$OBS_USER:$OBS_PASSWORD" -X PUT \
+              "$API/source/$PROJECT/$NAME/$f" \
+              -H "Content-Type: application/octet-stream" -T "$f"
+          done
+
+          for dir in */; do
+            dir="${dir%/}"
+            [ "$dir" = ".git" ] && continue
+            [ "$dir" = ".github" ] && continue
+            echo "Packaging source dir: $dir"
+            tar czf "$dir.tar.gz" "$dir"
+            curl -sS -u "$OBS_USER:$OBS_PASSWORD" -X PUT \
+              "$API/source/$PROJECT/$NAME/$dir.tar.gz" \
+              -H "Content-Type: application/octet-stream" -T "$dir.tar.gz"
+            rm -f "$dir.tar.gz"
+          done
+
+          echo "::notice::Published $NAME to OBS successfully"
