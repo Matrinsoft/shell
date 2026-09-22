@@ -43,9 +43,34 @@ jobs:
               done
               cd ~/rpmbuild/SPECS
               rpmspec -q --qf "%{version}\n" "$SPEC" > /out/version.txt 2>/dev/null || true
+
+              # vendor handling for rust packages using bundled_rust_deps
+              VENDOR_FLAG=""
+              if grep -q "bundled_rust_deps" "$SPEC"; then
+                SRC1=$(spectool -l "$SPEC" 2>/dev/null | awk "\$2 ~ /vendor/ {print \$2}" | head -1 | xargs basename 2>/dev/null)
+                if [ -n "$SRC1" ]; then
+                  if [ -d /src/vendor ]; then
+                    tar cJf ~/rpmbuild/SOURCES/"$SRC1" -C /src vendor/
+                    echo "packaged vendor from /src/vendor -> $SRC1"
+                  else
+                    SRCDIR=$(ls -d /src/*/ 2>/dev/null | grep -v "/vendor/" | head -1 | sed "s|/src/||; s|/||")
+                    if [ -d "/src/$SRCDIR/vendor" ]; then
+                      tar cJf ~/rpmbuild/SOURCES/"$SRC1" -C "/src/$SRCDIR" vendor/
+                      echo "packaged vendor from /src/$SRCDIR/vendor -> $SRC1"
+                    fi
+                  fi
+                fi
+                if grep -q "%bcond bundled_rust_deps" "$SPEC"; then
+                  VENDOR_FLAG="--define _with_bundled_rust_deps 1"
+                else
+                  VENDOR_FLAG="--define bundled_rust_deps 1"
+                fi
+                echo "vendor flag: $VENDOR_FLAG"
+              fi
+
               spectool -g -R *.spec || echo "spectool: some sources may already be local"
-              dnf builddep -y -q --setopt=minrate=0 --setopt=timeout=60 --setopt=retries=10 *.spec
-              rpmbuild -ba --nocheck *.spec
+              dnf builddep -y -q --setopt=minrate=0 --setopt=timeout=60 --setopt=retries=10 $VENDOR_FLAG *.spec
+              rpmbuild -ba --nocheck $VENDOR_FLAG *.spec
               cp ~/rpmbuild/SRPMS/*.src.rpm /out/ 2>/dev/null || true
               find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} /out/ \; 2>/dev/null || true
               ls -la /out/
