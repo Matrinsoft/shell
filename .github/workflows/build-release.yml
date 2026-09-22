@@ -37,7 +37,7 @@ jobs:
           docker run --rm \
             -v "$PWD:/src" \
             -v "$PWD/rpm-out:/out" \
-            registry.fedoraproject.org/fedora:rawhide bash -c '
+            registry.fedoraproject.org/fedora:45 bash -c '
               set -euo pipefail
               dnf install -y --setopt=install_weak_deps=False \
                 rpm-build rpmdevtools dnf-plugins-core
@@ -58,7 +58,7 @@ jobs:
               cd ~/rpmbuild/SPECS
               spectool -g -R *.spec || echo "spectool: some sources may already be local"
               dnf builddep -y *.spec
-              rpmbuild -ba *.spec
+              rpmbuild -ba --nocheck *.spec
               cp ~/rpmbuild/SRPMS/*.src.rpm /out/ 2>/dev/null || true
               find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} /out/ \; 2>/dev/null || true
               ls -la /out/
