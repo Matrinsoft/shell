@@ -24,7 +24,7 @@ jobs:
             -v "$PWD/rpm-out:/out" \
             registry.fedoraproject.org/fedora:45 bash -c '
               set -euo pipefail
-              dnf install -y --setopt=install_weak_deps=False \
+              dnf install -y -q --setopt=install_weak_deps=False \
                 --setopt=minrate=0 --setopt=timeout=60 --setopt=retries=10 \
                 rpm-build rpmdevtools dnf-plugins-core
               rpmdev-setuptree
@@ -42,15 +42,14 @@ jobs:
                 cp "$f" ~/rpmbuild/SOURCES/
               done
               cd ~/rpmbuild/SPECS
-              # resolve actual version (spec Version may use macros)
-              rpmspec -q --qf "%{version}\n" "$SPEC" 2>/dev/null | head -1 > /out/version.txt
+              rpmspec -q --qf "%{version}\n" "$SPEC" > /out/version.txt 2>/dev/null || true
               spectool -g -R *.spec || echo "spectool: some sources may already be local"
-              dnf builddep -y --setopt=minrate=0 --setopt=timeout=60 --setopt=retries=10 *.spec
+              dnf builddep -y -q --setopt=minrate=0 --setopt=timeout=60 --setopt=retries=10 *.spec
               rpmbuild -ba --nocheck *.spec
               cp ~/rpmbuild/SRPMS/*.src.rpm /out/ 2>/dev/null || true
               find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} /out/ \; 2>/dev/null || true
               ls -la /out/
-            '
+            ' > build.log 2>&1 || { tail -80 build.log; exit 1; }
 
       - name: Create tag and GitHub Release
         env:
