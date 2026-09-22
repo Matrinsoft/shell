@@ -16,21 +16,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract package metadata
-        id: meta
-        run: |
-          SPEC=$(ls *.spec 2>/dev/null | head -1)
-          if [ -z "$SPEC" ]; then
-            echo "::error::No spec file found"
-            exit 1
-          fi
-          NAME=$(grep -m1 '^Name:' "$SPEC" | sed 's/^Name:[[:space:]]*//' | tr -d '\r')
-          VERSION=$(grep -m1 '^Version:' "$SPEC" | sed 's/^Version:[[:space:]]*//' | tr -d '\r')
-          echo "spec=$SPEC" >> "$GITHUB_OUTPUT"
-          echo "name=$NAME" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "spec=$SPEC, name=$NAME, version=$VERSION"
-
       - name: Build RPM in Fedora container
         run: |
           mkdir -p rpm-out
@@ -40,6 +25,7 @@ jobs:
             registry.fedoraproject.org/fedora:45 bash -c '
               set -euo pipefail
               dnf install -y --setopt=install_weak_deps=False \
+                --setopt=minrate=0 --setopt=timeout=60 --setopt=retries=10 \
                 rpm-build rpmdevtools dnf-plugins-core
               rpmdev-setuptree
               cd /src
@@ -56,8 +42,10 @@ jobs:
                 cp "$f" ~/rpmbuild/SOURCES/
               done
               cd ~/rpmbuild/SPECS
+              # resolve actual version (spec Version may use macros)
+              rpmspec -q --qf "%{version}\n" "$SPEC" 2>/dev/null | head -1 > /out/version.txt
               spectool -g -R *.spec || echo "spectool: some sources may already be local"
-              dnf builddep -y *.spec
+              dnf builddep -y --setopt=minrate=0 --setopt=timeout=60 --setopt=retries=10 *.spec
               rpmbuild -ba --nocheck *.spec
               cp ~/rpmbuild/SRPMS/*.src.rpm /out/ 2>/dev/null || true
               find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} /out/ \; 2>/dev/null || true
@@ -69,7 +57,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.meta.outputs.version }}"
+          VERSION="$(cat rpm-out/version.txt 2>/dev/null | head -1 | tr -d '\r')"
+          if [ -z "$VERSION" ]; then
+            SPEC=$(ls *.spec | head -1)
+            VERSION="$(grep -m1 '^Version:' "$SPEC" | sed 's/^Version:[[:space:]]*//' | tr -d '\r')"
+          fi
           TAG="v$(echo "$VERSION" | tr '~' '-')"
           echo "Tag: $TAG"
           if ! git rev-parse "$TAG" >/dev/null 2>&1; then
