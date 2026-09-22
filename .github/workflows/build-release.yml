@@ -45,7 +45,7 @@ jobs:
               rpmspec -q --qf "%{version}\n" "$SPEC" > /out/version.txt 2>/dev/null || true
 
               # vendor handling for rust packages using bundled_rust_deps
-              VENDOR_FLAG=""
+              VENDOR_DEFINE=""
               if grep -q "bundled_rust_deps" "$SPEC"; then
                 SRC1=$(spectool -l "$SPEC" 2>/dev/null | awk "\$2 ~ /vendor/ {print \$2}" | head -1 | xargs basename 2>/dev/null)
                 if [ -n "$SRC1" ]; then
@@ -61,16 +61,21 @@ jobs:
                   fi
                 fi
                 if grep -q "%bcond bundled_rust_deps" "$SPEC"; then
-                  VENDOR_FLAG="--define _with_bundled_rust_deps 1"
+                  VENDOR_DEFINE="_with_bundled_rust_deps 1"
                 else
-                  VENDOR_FLAG="--define bundled_rust_deps 1"
+                  VENDOR_DEFINE="bundled_rust_deps 1"
                 fi
-                echo "vendor flag: $VENDOR_FLAG"
+                echo "vendor define: $VENDOR_DEFINE"
+              fi
+
+              EXTRA_ARGS=()
+              if [ -n "$VENDOR_DEFINE" ]; then
+                EXTRA_ARGS+=(--define "$VENDOR_DEFINE")
               fi
 
               spectool -g -R *.spec || echo "spectool: some sources may already be local"
-              dnf builddep -y -q --setopt=minrate=0 --setopt=timeout=60 --setopt=retries=10 $VENDOR_FLAG *.spec
-              rpmbuild -ba --nocheck $VENDOR_FLAG *.spec
+              dnf builddep -y -q --setopt=minrate=0 --setopt=timeout=60 --setopt=retries=10 "${EXTRA_ARGS[@]}" *.spec
+              rpmbuild -ba --nocheck "${EXTRA_ARGS[@]}" *.spec
               cp ~/rpmbuild/SRPMS/*.src.rpm /out/ 2>/dev/null || true
               find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} /out/ \; 2>/dev/null || true
               ls -la /out/
