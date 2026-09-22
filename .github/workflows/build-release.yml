@@ -70,7 +70,8 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ steps.meta.outputs.version }}"
-          TAG="v${VERSION}"
+          # git tag cannot contain '~'; normalize to '-'
+          TAG="v$(echo "$VERSION" | tr '~' '-')"
           echo "Tag: $TAG"
           if ! git rev-parse "$TAG" >/dev/null 2>&1; then
             git tag "$TAG"
