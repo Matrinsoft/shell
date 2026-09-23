@@ -24,6 +24,7 @@ jobs:
             -v "$PWD/rpm-out:/out" \
             registry.fedoraproject.org/fedora:45 bash -c '
               set -euo pipefail
+              export GETTEXT_SYSTEM=1
               dnf install -y -q --setopt=install_weak_deps=False \
                 --setopt=minrate=0 --setopt=timeout=60 --setopt=retries=10 \
                 rpm-build rpmdevtools dnf-plugins-core
@@ -47,18 +48,20 @@ jobs:
               # vendor handling for rust packages using bundled_rust_deps
               VENDOR_DEFINE=""
               if grep -q "bundled_rust_deps" "$SPEC"; then
+                SRC0=$(spectool -l "$SPEC" 2>/dev/null | awk "\$1==\"Source0:\" || \$1==\"Source:\" {print \$2}" | head -1 | xargs basename 2>/dev/null)
                 SRC1=$(spectool -l "$SPEC" 2>/dev/null | awk "\$2 ~ /vendor/ {print \$2}" | head -1 | xargs basename 2>/dev/null)
+                SRCDIR=$(ls -d /src/*/ 2>/dev/null | grep -v "/vendor/" | grep -v "/\\.git" | head -1 | sed "s|/src/||; s|/||")
                 if [ -n "$SRC1" ]; then
                   if [ -d /src/vendor ]; then
                     tar cJf ~/rpmbuild/SOURCES/"$SRC1" -C /src vendor/
                     echo "packaged vendor from /src/vendor -> $SRC1"
-                  else
-                    SRCDIR=$(ls -d /src/*/ 2>/dev/null | grep -v "/vendor/" | head -1 | sed "s|/src/||; s|/||")
-                    if [ -d "/src/$SRCDIR/vendor" ]; then
-                      tar cJf ~/rpmbuild/SOURCES/"$SRC1" -C "/src/$SRCDIR" vendor/
-                      echo "packaged vendor from /src/$SRCDIR/vendor -> $SRC1"
-                    fi
+                  elif [ -d "/src/$SRCDIR/vendor" ]; then
+                    tar cJf ~/rpmbuild/SOURCES/"$SRC1" -C "/src/$SRCDIR" vendor/
+                    echo "packaged vendor from /src/$SRCDIR/vendor -> $SRC1"
                   fi
+                elif [ -n "$SRC0" ] && [ -d "/src/$SRCDIR/vendor" ]; then
+                  tar cJf ~/rpmbuild/SOURCES/"$SRC0" -C /src "$SRCDIR"/
+                  echo "packaged full source tree (with vendor) -> $SRC0"
                 fi
                 if grep -q "%bcond bundled_rust_deps" "$SPEC"; then
                   VENDOR_DEFINE="_with_bundled_rust_deps 1"
@@ -79,7 +82,7 @@ jobs:
               cp ~/rpmbuild/SRPMS/*.src.rpm /out/ 2>/dev/null || true
               find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} /out/ \; 2>/dev/null || true
               ls -la /out/
-            ' > build.log 2>&1 || { tail -80 build.log; exit 1; }
+            ' > build.log 2>&1 || { tail -100 build.log; exit 1; }
 
       - name: Create tag and GitHub Release
         env:
