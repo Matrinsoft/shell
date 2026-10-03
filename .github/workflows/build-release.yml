@@ -76,6 +76,47 @@ jobs:
                 EXTRA_ARGS+=(--define "$VENDOR_DEFINE")
               fi
 
+              # Build Source0 from this checkout so local source changes are included.
+              SOURCE0_URL=$(spectool -l "$SPEC" 2>/dev/null | awk '$1 == "Source0:" {print $2; exit}')
+              SOURCE0_NAME="${SOURCE0_URL##*/}"
+              SOURCE0_NAME="${SOURCE0_NAME%%\?*}"
+              if [ -n "$SOURCE0_NAME" ]; then
+                SOURCE0_PATH="$HOME/rpmbuild/SOURCES/$SOURCE0_NAME"
+                SOURCE0_ROOT="$SOURCE0_NAME"
+                SOURCE0_ROOT="${SOURCE0_ROOT%.tar.xz}"
+                SOURCE0_ROOT="${SOURCE0_ROOT%.tar.gz}"
+                SOURCE0_ROOT="${SOURCE0_ROOT%.tar.bz2}"
+                SOURCE0_ROOT="${SOURCE0_ROOT%.tar.zst}"
+                if git -C /src rev-parse --verify "HEAD:$SOURCE0_ROOT" >/dev/null 2>&1; then
+                  ARCHIVE_TREE="HEAD:$SOURCE0_ROOT"
+                else
+                  ARCHIVE_TREE="HEAD"
+                fi
+                rm -f "$SOURCE0_PATH"
+                case "$SOURCE0_NAME" in
+                  *.tar.xz)
+                    git -C /src archive --format=tar --prefix="$SOURCE0_ROOT/" "$ARCHIVE_TREE" | xz -c > "$SOURCE0_PATH"
+                    ;;
+                  *.tar.gz)
+                    git -C /src archive --format=tar --prefix="$SOURCE0_ROOT/" "$ARCHIVE_TREE" | gzip -c > "$SOURCE0_PATH"
+                    ;;
+                  *.tar.bz2)
+                    git -C /src archive --format=tar --prefix="$SOURCE0_ROOT/" "$ARCHIVE_TREE" | bzip2 -c > "$SOURCE0_PATH"
+                    ;;
+                  *.tar.zst)
+                    git -C /src archive --format=tar --prefix="$SOURCE0_ROOT/" "$ARCHIVE_TREE" | zstd -q -c > "$SOURCE0_PATH"
+                    ;;
+                  *)
+                    echo "Unsupported Source0 archive format: $SOURCE0_NAME" >&2
+                    exit 1
+                    ;;
+                esac
+                test -s "$SOURCE0_PATH"
+                echo "Built local Source0: $SOURCE0_NAME (tree: $ARCHIVE_TREE)"
+              else
+                echo "No Source0 found; retaining the spec's other source handling"
+              fi
+
               spectool -g -R *.spec || echo "spectool: some sources may already be local"
               dnf builddep -y -q --setopt=minrate=0 --setopt=timeout=60 --setopt=retries=10 "${EXTRA_ARGS[@]}" *.spec
               rpmbuild -ba --nocheck "${EXTRA_ARGS[@]}" *.spec
