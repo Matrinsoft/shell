@@ -77,7 +77,7 @@ jobs:
               fi
 
               # Build Source0 from this checkout so local source changes are included.
-              SOURCE0_URL=$(spectool -l "$SPEC" 2>/dev/null | awk '$1 == "Source0:" {print $2; exit}')
+              SOURCE0_URL=$(spectool -l "$SPEC" 2>/dev/null | awk "\$1 == \"Source0:\" {print \$2; exit}")
               SOURCE0_NAME="${SOURCE0_URL##*/}"
               SOURCE0_NAME="${SOURCE0_NAME%%\?*}"
               if [ -n "$SOURCE0_NAME" ]; then
@@ -114,7 +114,7 @@ jobs:
                 test -s "$SOURCE0_PATH"
                 echo "Built local Source0: $SOURCE0_NAME (tree: $ARCHIVE_TREE)"
               else
-                echo "No Source0 found; retaining the spec's other source handling"
+                echo "No Source0 found; retaining the spec other source handling"
               fi
 
               spectool -g -R *.spec || echo "spectool: some sources may already be local"
