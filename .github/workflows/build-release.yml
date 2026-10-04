@@ -22,12 +22,15 @@ jobs:
           docker run --rm \
             -v "$PWD:/src" \
             -v "$PWD/rpm-out:/out" \
+            -e GH_TOKEN="${{ github.token }}" \
+            -e GITHUB_REPOSITORY="${{ github.repository }}" \
+            -e GITHUB_SHA="${{ github.sha }}" \
             registry.fedoraproject.org/fedora:45 bash -c '
               set -euo pipefail
               export GETTEXT_SYSTEM=1
               dnf install -y -q --setopt=install_weak_deps=False \
                 --setopt=minrate=0 --setopt=timeout=60 --setopt=retries=10 \
-                rpm-build rpmdevtools dnf-plugins-core make git tar gzip xz findutils
+                rpm-build rpmdevtools dnf-plugins-core make git curl tar gzip xz findutils
               git config --global --add safe.directory /src
               rpmdev-setuptree
               cd /src
@@ -161,6 +164,22 @@ jobs:
                     ;;
                 esac
                 test -s "$SOURCE0_PATH"
+                cp "$SOURCE0_PATH" /out/
+                RELEASE_TAG="ci-${GITHUB_SHA:0:12}"
+                RELEASE_API="https://api.github.com/repos/$GITHUB_REPOSITORY/releases"
+                RELEASE_JSON=$(curl -fsS -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" "$RELEASE_API/tags/$RELEASE_TAG" 2>/dev/null || true)
+                if [ -z "$RELEASE_JSON" ]; then
+                  RELEASE_JSON=$(curl -fsS -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/json" "$RELEASE_API" -d "{\"tag_name\":\"$RELEASE_TAG\",\"name\":\"$RELEASE_TAG\",\"prerelease\":true}")
+                fi
+                RELEASE_ID=$(printf '%s' "$RELEASE_JSON" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -1)
+                [ -n "$RELEASE_ID" ] || { echo "Unable to determine GitHub Release ID" >&2; exit 1; }
+                UPLOAD_URL="https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$SOURCE0_NAME"
+                if ! curl -fsS -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/octet-stream" --data-binary "@$SOURCE0_PATH" "$UPLOAD_URL" >/dev/null; then
+                  echo "Source0 asset already exists; retaining the published asset"
+                fi
+                RELEASE_SOURCE_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$SOURCE0_NAME"
+                sed -Ei "0,/^[[:space:]]*Source0:/s#^[[:space:]]*Source0:.*#Source0: $RELEASE_SOURCE_URL#" "$HOME/rpmbuild/SPECS/$SPEC"
+                echo "Published Source0: $RELEASE_SOURCE_URL"
                 echo "Built local Source0: $SOURCE0_NAME (tree: $ARCHIVE_TREE)"
               else
                 echo "No Source0 found; retaining the spec other source handling"
@@ -179,20 +198,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          VERSION="$(cat rpm-out/version.txt 2>/dev/null | head -1 | tr -d '\r')"
-          if [ -z "$VERSION" ]; then
-            SPEC=$(ls *.spec | head -1)
-            VERSION="$(grep -m1 '^Version:' "$SPEC" | sed 's/^Version:[[:space:]]*//' | tr -d '\r')"
-          fi
-          TAG="v$(echo "$VERSION" | tr '~' '-')"
-          echo "Tag: $TAG"
-          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
-            git tag "$TAG"
-            git push origin "$TAG"
-            echo "Created tag $TAG"
-          else
-            echo "Tag $TAG already exists"
-          fi
+          TAG="ci-${GITHUB_SHA::12}"
+          echo "Release: $TAG"
           shopt -s nullglob
           rpms=(rpm-out/*.rpm)
           if [ ${#rpms[@]} -eq 0 ]; then
