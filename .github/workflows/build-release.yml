@@ -130,16 +130,16 @@ jobs:
                         git clone -q "$dep_url" "$dep_dir"
                         rm -rf "$dep_dir/.git"
                         tar -rf "$ARCHIVE_TAR" -C "$DEPS_TMP" "$SOURCE0_ROOT/$dep_path"
-                      done < <(git -C /src config -f "/src/$SOURCE0_ROOT/.gitmodules" --get-regexp '^submodule\..*\.path$' || true)
+                      done < <(git -C /src config -f "/src/$SOURCE0_ROOT/.gitmodules" --get-regexp '\''^submodule\..*\.path$'\'' || true)
                     fi
 
                     for wrap in /src/$SOURCE0_ROOT/subprojects/*.wrap; do
                       [ -f "$wrap" ] || continue
-                      grep -q '^[[:space:]]*\[wrap-git\]' "$wrap" || continue
-                      dep_dir_name=$(sed -n 's/^[[:space:]]*directory[[:space:]]*=[[:space:]]*//p' "$wrap" | head -1)
+                      grep -q '\''^[[:space:]]*\[wrap-git\]'\'' "$wrap" || continue
+                      dep_dir_name=$(sed -n '\''s/^[[:space:]]*directory[[:space:]]*=[[:space:]]*//p'\'' "$wrap" | head -1)
                       [ -n "$dep_dir_name" ] || dep_dir_name=$(basename "$wrap" .wrap)
-                      dep_url=$(sed -n 's/^[[:space:]]*url[[:space:]]*=[[:space:]]*//p' "$wrap" | head -1)
-                      dep_revision=$(sed -n 's/^[[:space:]]*revision[[:space:]]*=[[:space:]]*//p' "$wrap" | head -1)
+                      dep_url=$(sed -n '\''s/^[[:space:]]*url[[:space:]]*=[[:space:]]*//p'\'' "$wrap" | head -1)
+                      dep_revision=$(sed -n '\''s/^[[:space:]]*revision[[:space:]]*=[[:space:]]*//p'\'' "$wrap" | head -1)
                       [ -n "$dep_url" ] || continue
                       [ -n "$dep_revision" ] || dep_revision=HEAD
                       dep_dir="$DEPS_TMP/$SOURCE0_ROOT/subprojects/$dep_dir_name"
@@ -171,7 +171,7 @@ jobs:
                 if [ -z "$RELEASE_JSON" ]; then
                   RELEASE_JSON=$(curl -fsS -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/json" "$RELEASE_API" -d "{\"tag_name\":\"$RELEASE_TAG\",\"name\":\"$RELEASE_TAG\",\"prerelease\":true}")
                 fi
-                RELEASE_ID=$(printf '%s' "$RELEASE_JSON" | sed -n 's/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -1)
+                RELEASE_ID=$(printf '\''%s'\'' "$RELEASE_JSON" | sed -n '\''s/.*"id":[[:space:]]*\([0-9][0-9]*\).*/\1/p'\'' | head -1)
                 [ -n "$RELEASE_ID" ] || { echo "Unable to determine GitHub Release ID" >&2; exit 1; }
                 UPLOAD_URL="https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$SOURCE0_NAME"
                 if ! curl -fsS -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/octet-stream" --data-binary "@$SOURCE0_PATH" "$UPLOAD_URL" >/dev/null; then
