@@ -113,6 +113,23 @@ jobs:
                       tar -rf "$ARCHIVE_TAR" -C "$DEPS_TMP" "$SOURCE0_ROOT/$dep_path"
                     done < <(git -C /src ls-tree -r "$ARCHIVE_TREE")
 
+                    # Some projects declare submodules in .gitmodules without a gitlink.
+                    if [ -f "/src/$SOURCE0_ROOT/.gitmodules" ]; then
+                      while read -r module_key dep_path; do
+                        module_name="${module_key#submodule.}"
+                        module_name="${module_name%.path}"
+                        dep_url=$(git -C /src config -f "/src/$SOURCE0_ROOT/.gitmodules" --get "submodule.$module_name.url" || true)
+                        [ -n "$dep_path" ] || continue
+                        [ -n "$dep_url" ] || continue
+                        [ -d "$DEPS_TMP/$SOURCE0_ROOT/$dep_path" ] && continue
+                        dep_dir="$DEPS_TMP/$SOURCE0_ROOT/$dep_path"
+                        mkdir -p "$(dirname "$dep_dir")"
+                        git clone -q "$dep_url" "$dep_dir"
+                        rm -rf "$dep_dir/.git"
+                        tar -rf "$ARCHIVE_TAR" -C "$DEPS_TMP" "$SOURCE0_ROOT/$dep_path"
+                      done < <(git -C /src config -f "/src/$SOURCE0_ROOT/.gitmodules" --get-regexp '^submodule\..*\.path$' || true)
+                    fi
+
                     for wrap in /src/$SOURCE0_ROOT/subprojects/*.wrap; do
                       [ -f "$wrap" ] || continue
                       grep -q '^[[:space:]]*\[wrap-git\]' "$wrap" || continue
