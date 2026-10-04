@@ -95,17 +95,48 @@ jobs:
                 fi
                 rm -f "$SOURCE0_PATH"
                 case "$SOURCE0_NAME" in
-                  *.tar.xz)
-                    git -C /src archive --format=tar --prefix="$SOURCE0_ROOT/" "$ARCHIVE_TREE" | xz -c > "$SOURCE0_PATH"
-                    ;;
-                  *.tar.gz)
-                    git -C /src archive --format=tar --prefix="$SOURCE0_ROOT/" "$ARCHIVE_TREE" | gzip -c > "$SOURCE0_PATH"
-                    ;;
-                  *.tar.bz2)
-                    git -C /src archive --format=tar --prefix="$SOURCE0_ROOT/" "$ARCHIVE_TREE" | bzip2 -c > "$SOURCE0_PATH"
-                    ;;
-                  *.tar.zst)
-                    git -C /src archive --format=tar --prefix="$SOURCE0_ROOT/" "$ARCHIVE_TREE" | zstd -q -c > "$SOURCE0_PATH"
+                  *.tar.xz|*.tar.gz|*.tar.bz2|*.tar.zst)
+                    ARCHIVE_TAR=$(mktemp)
+                    DEPS_TMP=$(mktemp -d)
+                    git -C /src archive --format=tar --prefix="$SOURCE0_ROOT/" "$ARCHIVE_TREE" > "$ARCHIVE_TAR"
+
+                    # Include git submodules and Meson wrap-git dependencies in Source0.
+                    while read -r mode type revision dep_path; do
+                      [ "$mode" = "160000" ] || continue
+                      dep_url=$(git -C /src config -f "/src/$SOURCE0_ROOT/.gitmodules" --get "submodule.$dep_path.url" || true)
+                      [ -n "$dep_url" ] || continue
+                      dep_dir="$DEPS_TMP/$SOURCE0_ROOT/$dep_path"
+                      mkdir -p "$(dirname "$dep_dir")"
+                      git clone -q --no-checkout "$dep_url" "$dep_dir"
+                      git -C "$dep_dir" checkout -q "$revision"
+                      rm -rf "$dep_dir/.git"
+                      tar -rf "$ARCHIVE_TAR" -C "$DEPS_TMP" "$SOURCE0_ROOT/$dep_path"
+                    done < <(git -C /src ls-tree -r "$ARCHIVE_TREE")
+
+                    for wrap in /src/$SOURCE0_ROOT/subprojects/*.wrap; do
+                      [ -f "$wrap" ] || continue
+                      grep -q '^[[:space:]]*\[wrap-git\]' "$wrap" || continue
+                      dep_dir_name=$(sed -n 's/^[[:space:]]*directory[[:space:]]*=[[:space:]]*//p' "$wrap" | head -1)
+                      [ -n "$dep_dir_name" ] || dep_dir_name=$(basename "$wrap" .wrap)
+                      dep_url=$(sed -n 's/^[[:space:]]*url[[:space:]]*=[[:space:]]*//p' "$wrap" | head -1)
+                      dep_revision=$(sed -n 's/^[[:space:]]*revision[[:space:]]*=[[:space:]]*//p' "$wrap" | head -1)
+                      [ -n "$dep_url" ] || continue
+                      [ -n "$dep_revision" ] || dep_revision=HEAD
+                      dep_dir="$DEPS_TMP/$SOURCE0_ROOT/subprojects/$dep_dir_name"
+                      mkdir -p "$(dirname "$dep_dir")"
+                      git clone -q --no-checkout "$dep_url" "$dep_dir"
+                      git -C "$dep_dir" checkout -q "$dep_revision"
+                      rm -rf "$dep_dir/.git"
+                      tar -rf "$ARCHIVE_TAR" -C "$DEPS_TMP" "$SOURCE0_ROOT/subprojects/$dep_dir_name"
+                    done
+                    rm -rf "$DEPS_TMP"
+                    case "$SOURCE0_NAME" in
+                      *.tar.xz) xz -c < "$ARCHIVE_TAR" > "$SOURCE0_PATH" ;;
+                      *.tar.gz) gzip -c < "$ARCHIVE_TAR" > "$SOURCE0_PATH" ;;
+                      *.tar.bz2) bzip2 -c < "$ARCHIVE_TAR" > "$SOURCE0_PATH" ;;
+                      *.tar.zst) zstd -q -c < "$ARCHIVE_TAR" > "$SOURCE0_PATH" ;;
+                    esac
+                    rm -f "$ARCHIVE_TAR"
                     ;;
                   *)
                     echo "Unsupported Source0 archive format: $SOURCE0_NAME" >&2
