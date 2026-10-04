@@ -94,7 +94,13 @@ jobs:
                 if git -C /src rev-parse --verify "HEAD:$SOURCE0_ROOT" >/dev/null 2>&1; then
                   ARCHIVE_TREE="HEAD:$SOURCE0_ROOT"
                 else
-                  ARCHIVE_TREE="HEAD"
+                  SOURCE_TREE=$(git -C /src ls-tree -d --name-only HEAD | awk '!/^\./ && !/\.spec$/ && !/\.patch$/ {print; exit}')
+                  if [ -n "$SOURCE_TREE" ]; then
+                    SOURCE0_ROOT="$SOURCE_TREE"
+                    ARCHIVE_TREE="HEAD:$SOURCE0_ROOT"
+                  else
+                    ARCHIVE_TREE="HEAD"
+                  fi
                 fi
                 rm -f "$SOURCE0_PATH"
                 case "$SOURCE0_NAME" in
