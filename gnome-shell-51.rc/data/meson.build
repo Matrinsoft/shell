@@ -134,6 +134,14 @@ schema = configure_file(
 )
 install_data('00_org.gnome.shell.gschema.override', install_dir: schemadir)
 
+# Lingmo OS dash customization
+dash_schema = configure_file(
+  input: 'org.gnome.shell.dash.gschema.xml',
+  output: 'org.gnome.shell.dash.gschema.xml',
+  copy: true,
+  install_dir: schemadir
+)
+
 if have_systemd
   unitconf = configuration_data()
   unitconf.set('bindir', bindir)
@@ -152,7 +160,7 @@ endif
 
 # for unit tests - gnome.compile_schemas() only looks in srcdir
 compiled_schemas = custom_target('compile-schemas',
-  input: schema,
+  input: [schema, dash_schema],
   output: 'gschemas.compiled',
   command: [find_program('glib-compile-schemas'), '--strict', data_builddir],
 )

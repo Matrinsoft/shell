@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Lingmo OS dash (dock) customization.
+
+  These keys control the application dash that is shown at the bottom of the
+  overview. They are exposed in GNOME Control Center, in the Appearance panel.
+-->
+<schemalist gettext-domain="gnome-shell">
+  <schema id="org.gnome.shell.dash" path="/org/gnome/shell/dash/">
+    <key name="icon-size" type="i">
+      <default>64</default>
+      <range min="32" max="128"/>
+      <summary>Dash icon size</summary>
+      <description>
+        Maximum size of the application icons in the dash, in pixels. The icons
+        are shrunk further when there is not enough room for all of them.
+      </description>
+    </key>
+
+    <key name="icon-spacing" type="i">
+      <default>4</default>
+      <range min="0" max="32"/>
+      <summary>Dash icon spacing</summary>
+      <description>
+        Horizontal spacing between the icons of the dash, in pixels.
+      </description>
+    </key>
+
+    <key name="max-icons-per-row" type="i">
+      <default>0</default>
+      <range min="0" max="64"/>
+      <summary>Maximum icons per row</summary>
+      <description>
+        Number of icons that are shown at the configured icon size. When the
+        dash holds more icons, they are shrunk so that this many icons still
+        fit into one row. Set to 0 for no limit.
+      </description>
+    </key>
+
+    <key name="dash-alignment" type="s">
+      <default>'center'</default>
+      <choices>
+        <choice value='center'/>
+        <choice value='start'/>
+        <choice value='end'/>
+      </choices>
+      <summary>Dash alignment</summary>
+      <description>
+        Horizontal alignment of the dash in the overview: 'center', 'start'
+        (left edge) or 'end' (right edge).
+      </description>
+    </key>
+
+    <key name="background-color" type="s">
+      <default>'#1d1d1d'</default>
+      <summary>Dash background color</summary>
+      <description>
+        Background color of the dash, as '#rrggbb'. An empty string keeps the
+        color provided by the shell theme.
+      </description>
+    </key>
+
+    <key name="background-opacity" type="i">
+      <default>75</default>
+      <range min="0" max="100"/>
+      <summary>Dash background opacity</summary>
+      <description>
+        Opacity of the dash background, in percent.
+      </description>
+    </key>
+
+    <key name="corner-radius" type="i">
+      <default>18</default>
+      <range min="0" max="64"/>
+      <summary>Dash corner radius</summary>
+      <description>
+        Corner radius of the dash background, in pixels.
+      </description>
+    </key>
+
+    <key name="border-width" type="i">
+      <default>0</default>
+      <range min="0" max="8"/>
+      <summary>Dash border width</summary>
+      <description>
+        Width of the border drawn around the dash background, in pixels.
+      </description>
+    </key>
+
+    <key name="border-color" type="s">
+      <default>'#ffffff'</default>
+      <summary>Dash border color</summary>
+      <description>
+        Color of the border drawn around the dash background, as '#rrggbb'.
+      </description>
+    </key>
+
+    <key name="blur-background" type="b">
+      <default>false</default>
+      <summary>Blur the dash background</summary>
+      <description>
+        Whether the content behind the dash background is blurred.
+      </description>
+    </key>
+
+    <key name="click-action" type="s">
+      <default>'launch'</default>
+      <choices>
+        <choice value='launch'/>
+        <choice value='minimize'/>
+        <choice value='cycle-windows'/>
+        <choice value='focus-or-launch'/>
+      </choices>
+      <summary>Dash click action</summary>
+      <description>
+        What happens when an application icon in the dash is clicked: 'launch'
+        (default behaviour), 'minimize' (minimize the focused window of that
+        application, otherwise focus it), 'cycle-windows' (switch to the next
+        window of the application) or 'focus-or-launch'.
+      </description>
+    </key>
+
+    <key name="show-running-indicator" type="b">
+      <default>true</default>
+      <summary>Show running indicator</summary>
+      <description>
+        Whether a dot is drawn below the icon of a running application.
+      </description>
+    </key>
+
+    <key name="show-app-labels" type="b">
+      <default>true</default>
+      <summary>Show application names</summary>
+      <description>
+        Whether the name of an application is shown when hovering its icon.
+      </description>
+    </key>
+
+    <key name="animation-time" type="i">
+      <default>200</default>
+      <range min="0" max="1000"/>
+      <summary>Dash animation duration</summary>
+      <description>
+        Duration of the dash animations, in milliseconds.
+      </description>
+    </key>
+  </schema>
+</schemalist>

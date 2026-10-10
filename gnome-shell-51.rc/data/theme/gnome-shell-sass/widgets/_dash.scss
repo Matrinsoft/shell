@@ -97,6 +97,12 @@ $dash_spacing: $base_margin * 0.5;
   .dash-background {
     margin-bottom: $dash_edge_offset;
   }
+
+  // LingmoOS: hide the running indicator when
+  // org.gnome.shell.dash:show-running-indicator is off
+  &.dash-hide-running-indicator .app-grid-running-dot {
+    visibility: hidden;
+  }
 }
 
 // OSD Tooltip

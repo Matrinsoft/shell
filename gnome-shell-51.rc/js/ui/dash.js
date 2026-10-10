@@ -1,4 +1,5 @@
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Graphene from 'gi://Graphene';
@@ -18,14 +19,63 @@ const DASH_ITEM_LABEL_SHOW_TIME = 150;
 const DASH_ITEM_LABEL_HIDE_TIME = 100;
 const DASH_ITEM_HOVER_TIMEOUT = 300;
 
+// LingmoOS dash customization, see data/org.gnome.shell.dash.gschema.xml
+const DASH_SETTINGS_SCHEMA = 'org.gnome.shell.dash';
+
+// The animation duration can be changed at runtime, so the module level
+// constant is only the default; DASH_ANIMATION_TIME keeps the upstream value.
+let dashAnimationTime = DASH_ANIMATION_TIME;
+
 export const DashIcon = GObject.registerClass(
 class DashIcon extends AppDisplay.AppIcon {
-    _init(app) {
+    _init(app, settings = null) {
         super._init(app, {
             setSizeManually: true,
             showLabel: false,
             popupMenuSide: St.Side.BOTTOM,
         });
+
+        this._settings = settings;
+    }
+
+    // LingmoOS: honour org.gnome.shell.dash:click-action
+    activate(button) {
+        const action = this._settings
+            ? this._settings.get_string('click-action')
+            : 'launch';
+
+        const windows = this.app.get_windows().filter(w => !w.is_skip_taskbar());
+
+        if (action === 'launch' ||
+            this.app.state === Shell.AppState.STOPPED ||
+            windows.length === 0) {
+            super.activate(button);
+            return;
+        }
+
+        const focusWindow = global.display.focus_window;
+        const isFocused = focusWindow && windows.includes(focusWindow);
+
+        switch (action) {
+        case 'minimize':
+            if (isFocused)
+                windows.forEach(w => w.minimize());
+            else
+                this.app.activate();
+            break;
+        case 'cycle-windows': {
+            const index = windows.indexOf(focusWindow);
+            const next = windows[(index + 1) % windows.length];
+            Main.activateWindow(next);
+            break;
+        }
+        case 'focus-or-launch':
+        default:
+            this.app.activate();
+            break;
+        }
+
+        Main.overview.hide();
     }
 
     // Disable scale-n-fade methods used during DND by parent
@@ -155,7 +205,7 @@ class DashItemContainer extends St.Widget {
         if (this.child == null)
             return;
 
-        const time = animate ? DASH_ANIMATION_TIME : 0;
+        const time = animate ? dashAnimationTime : 0;
         this.ease({
             scale_x: 1,
             scale_y: 1,
@@ -178,7 +228,7 @@ class DashItemContainer extends St.Widget {
             scale_x: 0,
             scale_y: 0,
             opacity: 0,
-            duration: DASH_ANIMATION_TIME,
+            duration: dashAnimationTime,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onComplete: () => this.destroy(),
         });
@@ -321,6 +371,13 @@ export const Dash = GObject.registerClass({
         this.iconSize = 64;
         this._shownInitially = false;
 
+        this._settings = new Gio.Settings({schema_id: DASH_SETTINGS_SCHEMA});
+        this._settings.connectObject('changed',
+            () => this._applySettings(), this);
+        this._maxIconSize = this._settings.get_int('icon-size');
+        this._iconSpacing = this._settings.get_int('icon-spacing');
+        this._blurEffect = null;
+
         this._separator = null;
         this._dragPlaceholder = null;
         this._dragPlaceholderPos = -1;
@@ -399,6 +456,8 @@ export const Dash = GObject.registerClass({
         // Translators: this is the name of the dock/favorites area on
         // the bottom of the overview
         Main.ctrlAltTabManager.addGroup(this, _('Dash'), 'shell-focus-dash-symbolic');
+
+        this._applySettings();
     }
 
     _onItemDragBegin() {
@@ -504,7 +563,9 @@ export const Dash = GObject.registerClass({
 
     _createAppItem(app) {
         const item = new DashItemContainer();
-        const appIcon = new DashIcon(app);
+        const appIcon = new DashIcon(app, this._settings);
+
+        appIcon.set_style(`margin-left: ${this._iconSpacing}px; margin-right: ${this._iconSpacing}px;`);
 
         appIcon.connect('menu-state-changed', (o, opened) => {
             this._itemMenuStateChanged(item, opened);
@@ -537,6 +598,15 @@ export const Dash = GObject.registerClass({
     }
 
     _syncLabel(item, appIcon) {
+        if (!this._settings.get_boolean('show-app-labels')) {
+            if (this._showLabelTimeoutId > 0)
+                GLib.source_remove(this._showLabelTimeoutId);
+            this._showLabelTimeoutId = 0;
+            this._labelShowing = false;
+            item.hideLabel();
+            return;
+        }
+
         const shouldShow = appIcon ? appIcon.shouldShowTooltip() : item.child.get_hover();
 
         if (shouldShow) {
@@ -568,6 +638,93 @@ export const Dash = GObject.registerClass({
                 GLib.Source.set_name_by_id(this._resetHoverTimeoutId, '[gnome-shell] this._labelShowing');
             }
         }
+    }
+
+    _rgbaString(color, alpha) {
+        const value = color.startsWith('#') ? color.substring(1) : color;
+
+        if (value.length !== 6)
+            return null;
+
+        const channels = [0, 2, 4].map(i => parseInt(value.substring(i, i + 2), 16));
+
+        if (channels.some(c => Number.isNaN(c)))
+            return null;
+
+        return `rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, ${alpha})`;
+    }
+
+    _updateItemStyles() {
+        const spacing = this._iconSpacing;
+        const style = `margin-left: ${spacing}px; margin-right: ${spacing}px;`;
+
+        for (const child of this._box.get_children()) {
+            if (child.child)
+                child.child.set_style(style);
+        }
+
+        this._showAppsIcon.toggleButton.set_style(style);
+    }
+
+    _updateBackgroundStyle() {
+        const opacity = this._settings.get_int('background-opacity') / 100;
+        const radius = this._settings.get_int('corner-radius');
+        const borderWidth = this._settings.get_int('border-width');
+        const borderColor = this._settings.get_string('border-color');
+        const background = this._background;
+
+        let style = `border-radius: ${radius}px;`;
+
+        const color = this._rgbaString(this._settings.get_string('background-color'), opacity);
+        if (color) {
+            style += ` background-color: ${color};`;
+            background.opacity = 255;
+        } else {
+            // No custom colour: keep the shell theme colour and only fade it.
+            background.opacity = Math.round(255 * opacity);
+        }
+
+        const border = borderWidth > 0 ? this._rgbaString(borderColor, 1) : null;
+        if (border)
+            style += ` border: ${borderWidth}px solid ${border};`;
+
+        background.set_style(style);
+
+        const blur = this._settings.get_boolean('blur-background');
+        if (blur && !this._blurEffect) {
+            this._blurEffect = new Shell.BlurEffect({
+                name: 'lingmo-dash-blur',
+                radius: 24,
+                brightness: 0.7,
+            });
+            background.add_effect_with_name('lingmo-dash-blur', this._blurEffect);
+        } else if (!blur && this._blurEffect) {
+            background.remove_effect_by_name('lingmo-dash-blur');
+            this._blurEffect = null;
+        }
+    }
+
+    _applySettings() {
+        const settings = this._settings;
+
+        dashAnimationTime = settings.get_int('animation-time');
+        this._maxIconSize = settings.get_int('icon-size');
+        this._iconSpacing = settings.get_int('icon-spacing');
+
+        const alignment = settings.get_string('dash-alignment');
+        this._dashContainer.x_align = {
+            'start': Clutter.ActorAlign.START,
+            'end': Clutter.ActorAlign.END,
+        }[alignment] ?? Clutter.ActorAlign.CENTER;
+
+        if (settings.get_boolean('show-running-indicator'))
+            this.remove_style_class_name('dash-hide-running-indicator');
+        else
+            this.add_style_class_name('dash-hide-running-indicator');
+
+        this._updateItemStyles();
+        this._updateBackgroundStyle();
+        this._adjustIconSize();
     }
 
     _adjustIconSize() {
@@ -616,15 +773,31 @@ export const Dash = GObject.registerClass({
         availHeight -= themeNode.get_vertical_padding();
         availHeight -= buttonHeight - iconHeight;
 
-        const maxIconSize = Math.min(availWidth / iconChildren.length, availHeight);
+        let maxIconSize = Math.min(availWidth / iconChildren.length, availHeight);
+
+        // LingmoOS: never grow beyond the configured icon size ...
+        maxIconSize = Math.min(maxIconSize, this._maxIconSize);
+
+        // ... and, when requested, keep at most this many icons in one row.
+        const maxIconsPerRow = this._settings.get_int('max-icons-per-row');
+        if (maxIconsPerRow > 0 && iconChildren.length > maxIconsPerRow) {
+            const available = availWidth - (iconChildren.length - 1) * spacing;
+            maxIconSize = Math.min(maxIconSize, available / maxIconsPerRow);
+        }
 
         const scaleFactor = St.ThemeContext.get_for_stage(global.stage).scale_factor;
         const iconSizes = baseIconSizes.map(s => s * scaleFactor);
+        const configuredSize = this._maxIconSize * scaleFactor;
+
+        if (!iconSizes.includes(configuredSize)) {
+            iconSizes.push(configuredSize);
+            iconSizes.sort((a, b) => a - b);
+        }
 
         let newIconSize = baseIconSizes[0];
-        for (let i = 0; i < iconSizes.length; i++) {
-            if (iconSizes[i] <= maxIconSize)
-                newIconSize = baseIconSizes[i];
+        for (const size of iconSizes) {
+            if (size <= maxIconSize)
+                newIconSize = Math.round(size / scaleFactor);
         }
 
         if (newIconSize === this.iconSize)
@@ -660,7 +833,7 @@ export const Dash = GObject.registerClass({
             icon.icon.ease({
                 width: targetWidth,
                 height: targetHeight,
-                duration: DASH_ANIMATION_TIME,
+                duration: dashAnimationTime,
                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             });
         }
@@ -668,7 +841,7 @@ export const Dash = GObject.registerClass({
         if (this._separator) {
             this._separator.ease({
                 height: this.iconSize,
-                duration: DASH_ANIMATION_TIME,
+                duration: dashAnimationTime,
                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             });
         }
