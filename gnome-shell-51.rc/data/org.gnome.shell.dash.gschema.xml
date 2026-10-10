@@ -7,6 +7,46 @@
 -->
 <schemalist gettext-domain="gnome-shell">
   <schema id="org.gnome.shell.dash" path="/org/gnome/shell/dash/">
+    <key name="dock-enabled" type="b">
+      <default>true</default>
+      <summary>Show the dash on the desktop</summary>
+      <description>
+        Whether the dash is also shown as a persistent dock on the desktop,
+        in addition to the dash inside the overview.
+      </description>
+    </key>
+
+    <key name="dock-position" type="s">
+      <default>'bottom'</default>
+      <choices>
+        <choice value='bottom'/>
+        <choice value='left'/>
+        <choice value='right'/>
+      </choices>
+      <summary>Dock position</summary>
+      <description>
+        Screen edge the desktop dock is attached to.
+      </description>
+    </key>
+
+    <key name="dock-autohide" type="b">
+      <default>false</default>
+      <summary>Automatically hide the dock</summary>
+      <description>
+        Whether the desktop dock is hidden until the pointer touches its
+        screen edge.
+      </description>
+    </key>
+
+    <key name="dock-reserve-space" type="b">
+      <default>true</default>
+      <summary>Reserve space for the dock</summary>
+      <description>
+        Whether maximized windows leave room for the desktop dock. Ignored
+        while "dock-autohide" is enabled.
+      </description>
+    </key>
+
     <key name="icon-size" type="i">
       <default>64</default>
       <range min="32" max="128"/>

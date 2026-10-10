@@ -338,9 +338,11 @@ class EmptyDropTargetItem extends DashItemContainer {
 
 const DashIconsLayout = GObject.registerClass(
 class DashIconsLayout extends Clutter.BoxLayout {
-    _init() {
+    _init(vertical = false) {
         super._init({
-            orientation: Clutter.Orientation.HORIZONTAL,
+            orientation: vertical
+                ? Clutter.Orientation.VERTICAL
+                : Clutter.Orientation.HORIZONTAL,
         });
     }
 
@@ -353,7 +355,12 @@ class DashIconsLayout extends Clutter.BoxLayout {
 const baseIconSizes = [16, 22, 24, 32, 48, 64];
 
 export const Dash = GObject.registerClass({
-    Signals: {'icon-size-changed': {}},
+    Signals: {
+        'icon-size-changed': {},
+        // Emitted after the dash rebuilt its icons, so that consumers which
+        // size themselves from the dash (the desktop dock) can follow.
+        'contents-changed': {},
+    },
 }, class Dash extends St.Widget {
     /**
      * @param {object} source
@@ -365,7 +372,14 @@ export const Dash = GObject.registerClass({
             return null;
     }
 
-    _init() {
+    _init(params = {}) {
+        const {desktop = false, vertical = false} = params;
+
+        // LingmoOS: when used as a desktop dock the dash is not part of the
+        // overview, and it can be laid out vertically (left/right edge).
+        this._desktop = desktop;
+        this._vertical = vertical;
+
         this._maxWidth = -1;
         this._maxHeight = -1;
         this.iconSize = 64;
@@ -394,14 +408,18 @@ export const Dash = GObject.registerClass({
         });
 
         this._dashContainer = new St.BoxLayout({
+            vertical,
             x_align: Clutter.ActorAlign.CENTER,
-            y_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+            x_expand: vertical,
+            y_expand: !vertical,
         });
 
         this._box = new St.Widget({
             clip_to_allocation: true,
-            layout_manager: new DashIconsLayout(),
-            y_expand: true,
+            layout_manager: new DashIconsLayout(vertical),
+            x_expand: vertical,
+            y_expand: !vertical,
         });
         this._box._delegate = this;
 
@@ -422,11 +440,15 @@ export const Dash = GObject.registerClass({
         const sizerBox = new Clutter.Actor();
         sizerBox.add_constraint(new Clutter.BindConstraint({
             source: this._showAppsIcon.icon,
-            coordinate: Clutter.BindCoordinate.HEIGHT,
+            coordinate: vertical
+                ? Clutter.BindCoordinate.WIDTH
+                : Clutter.BindCoordinate.HEIGHT,
         }));
         sizerBox.add_constraint(new Clutter.BindConstraint({
             source: this._dashContainer,
-            coordinate: Clutter.BindCoordinate.WIDTH,
+            coordinate: vertical
+                ? Clutter.BindCoordinate.HEIGHT
+                : Clutter.BindCoordinate.WIDTH,
         }));
         this._background.add_child(sizerBox);
 
@@ -455,7 +477,10 @@ export const Dash = GObject.registerClass({
 
         // Translators: this is the name of the dock/favorites area on
         // the bottom of the overview
-        Main.ctrlAltTabManager.addGroup(this, _('Dash'), 'shell-focus-dash-symbolic');
+        if (!desktop) {
+            Main.ctrlAltTabManager.addGroup(this, _('Dash'),
+                'shell-focus-dash-symbolic');
+        }
 
         this._applySettings();
     }
@@ -565,7 +590,7 @@ export const Dash = GObject.registerClass({
         const item = new DashItemContainer();
         const appIcon = new DashIcon(app, this._settings);
 
-        appIcon.set_style(`margin-left: ${this._iconSpacing}px; margin-right: ${this._iconSpacing}px;`);
+        appIcon.set_style(this._itemStyle());
 
         appIcon.connect('menu-state-changed', (o, opened) => {
             this._itemMenuStateChanged(item, opened);
@@ -654,9 +679,17 @@ export const Dash = GObject.registerClass({
         return `rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, ${alpha})`;
     }
 
-    _updateItemStyles() {
+    _itemStyle() {
         const spacing = this._iconSpacing;
-        const style = `margin-left: ${spacing}px; margin-right: ${spacing}px;`;
+
+        if (this._vertical)
+            return `margin-top: ${spacing}px; margin-bottom: ${spacing}px;`;
+
+        return `margin-left: ${spacing}px; margin-right: ${spacing}px;`;
+    }
+
+    _updateItemStyles() {
+        const style = this._itemStyle();
 
         for (const child of this._box.get_children()) {
             if (child.child)
@@ -773,7 +806,9 @@ export const Dash = GObject.registerClass({
         availHeight -= themeNode.get_vertical_padding();
         availHeight -= buttonHeight - iconHeight;
 
-        let maxIconSize = Math.min(availWidth / iconChildren.length, availHeight);
+        let maxIconSize = this._vertical
+            ? Math.min(availHeight / iconChildren.length, availWidth)
+            : Math.min(availWidth / iconChildren.length, availHeight);
 
         // LingmoOS: never grow beyond the configured icon size ...
         maxIconSize = Math.min(maxIconSize, this._maxIconSize);
@@ -781,7 +816,8 @@ export const Dash = GObject.registerClass({
         // ... and, when requested, keep at most this many icons in one row.
         const maxIconsPerRow = this._settings.get_int('max-icons-per-row');
         if (maxIconsPerRow > 0 && iconChildren.length > maxIconsPerRow) {
-            const available = availWidth - (iconChildren.length - 1) * spacing;
+            const mainAxis = this._vertical ? availHeight : availWidth;
+            const available = mainAxis - (iconChildren.length - 1) * spacing;
             maxIconSize = Math.min(maxIconSize, available / maxIconsPerRow);
         }
 
@@ -1010,6 +1046,8 @@ export const Dash = GObject.registerClass({
         // Workaround for https://bugzilla.gnome.org/show_bug.cgi?id=692744
         // Without it, StBoxLayout may use a stale size cache
         this._box.queue_relayout();
+
+        this.emit('contents-changed');
     }
 
     _clearDragPlaceholder() {

@@ -13,6 +13,7 @@ import * as BrightnessManager from '../misc/brightnessManager.js';
 import * as Config from '../misc/config.js';
 import * as Components from './components.js';
 import * as CtrlAltTab from './ctrlAltTab.js';
+import * as DesktopDash from './desktopDash.js';
 import * as EndSessionDialog from './endSessionDialog.js';
 import * as ExtensionSystem from './extensionSystem.js';
 import * as ExtensionDownloader from './extensionDownloader.js';
@@ -59,6 +60,7 @@ export let componentManager = null;
 export let extensionManager = null;
 export let panel = null;
 export let overview = null;
+export let desktopDash = null;
 export let runDialog = null;
 export let lookingGlass = null;
 export let welcomeDialog = null;
@@ -246,6 +248,7 @@ async function _initializeUI() {
 
     messageTray = new MessageTray.MessageTray();
     panel = new Panel.Panel();
+    desktopDash = new DesktopDash.DesktopDash();
     keyboard = new Keyboard.KeyboardManager();
     notificationDaemon = new NotificationDaemon.NotificationDaemon();
     windowAttentionHandler = new WindowAttentionHandler.WindowAttentionHandler();

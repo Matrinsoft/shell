@@ -105,6 +105,13 @@ $dash_spacing: $base_margin * 0.5;
   }
 }
 
+// LingmoOS: the persistent dash on the desktop
+.desktop-dash {
+  .dash-background {
+    box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.35);
+  }
+}
+
 // OSD Tooltip
 .dash-label {
   @extend %tooltip;
