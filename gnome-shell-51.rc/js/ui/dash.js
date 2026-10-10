@@ -8,6 +8,7 @@ import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import * as AppDisplay from './appDisplay.js';
+import * as DashWindowPreview from './dashWindowPreview.js';
 import * as AppFavorites from './appFavorites.js';
 import * as DND from './dnd.js';
 import * as IconGrid from './iconGrid.js';
@@ -18,6 +19,8 @@ export const DASH_ANIMATION_TIME = 200;
 const DASH_ITEM_LABEL_SHOW_TIME = 150;
 const DASH_ITEM_LABEL_HIDE_TIME = 100;
 const DASH_ITEM_HOVER_TIMEOUT = 300;
+const DASH_PREVIEW_SHOW_TIMEOUT = 400;
+const DASH_PREVIEW_HIDE_TIMEOUT = 300;
 
 // LingmoOS dash customization, see data/org.gnome.shell.dash.gschema.xml
 const DASH_SETTINGS_SCHEMA = 'org.gnome.shell.dash';
@@ -373,12 +376,13 @@ export const Dash = GObject.registerClass({
     }
 
     _init(params = {}) {
-        const {desktop = false, vertical = false} = params;
+        const {desktop = false, vertical = false, previewPlacement = 'above'} = params;
 
         // LingmoOS: when used as a desktop dock the dash is not part of the
         // overview, and it can be laid out vertically (left/right edge).
         this._desktop = desktop;
         this._vertical = vertical;
+        this._previewPlacement = previewPlacement;
 
         this._maxWidth = -1;
         this._maxHeight = -1;
@@ -391,6 +395,10 @@ export const Dash = GObject.registerClass({
         this._maxIconSize = this._settings.get_int('icon-size');
         this._iconSpacing = this._settings.get_int('icon-spacing');
         this._blurEffect = null;
+
+        this._previewPopup = null;
+        this._previewShowTimeoutId = 0;
+        this._previewHideTimeoutId = 0;
 
         this._separator = null;
         this._dragPlaceholder = null;
@@ -467,6 +475,7 @@ export const Dash = GObject.registerClass({
             () => this._queueRedisplay(), this);
 
         Main.overview.connectObject(
+            'hiding', () => this._closePreview(),
             'item-drag-begin', () => this._onItemDragBegin(),
             'item-drag-end', () => this._onItemDragEnd(),
             'item-drag-cancelled', () => this._onItemDragCancelled(),
@@ -592,6 +601,11 @@ export const Dash = GObject.registerClass({
 
         appIcon.set_style(this._itemStyle());
 
+        if (this._desktop) {
+            appIcon.connect('notify::hover',
+                () => this._onIconHoverChanged(appIcon));
+        }
+
         appIcon.connect('menu-state-changed', (o, opened) => {
             this._itemMenuStateChanged(item, opened);
         });
@@ -662,6 +676,81 @@ export const Dash = GObject.registerClass({
                     });
                 GLib.Source.set_name_by_id(this._resetHoverTimeoutId, '[gnome-shell] this._labelShowing');
             }
+        }
+    }
+
+    // LingmoOS: window previews on hover
+    _onIconHoverChanged(appIcon) {
+        if (appIcon.hover)
+            this._queuePreviewShow(appIcon);
+        else
+            this._queuePreviewHide();
+    }
+
+    _queuePreviewShow(appIcon) {
+        this._cancelPreviewTimeouts();
+
+        if (!this._settings.get_boolean('show-window-previews'))
+            return;
+
+        if (appIcon.app.state === Shell.AppState.STOPPED)
+            return;
+
+        this._previewShowTimeoutId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,
+            DASH_PREVIEW_SHOW_TIMEOUT, () => {
+                this._previewShowTimeoutId = 0;
+                this._openPreview(appIcon);
+                return GLib.SOURCE_REMOVE;
+            });
+        GLib.Source.set_name_by_id(this._previewShowTimeoutId,
+            '[gnome-shell] dash window preview');
+    }
+
+    _openPreview(appIcon) {
+        const windows = appIcon.app.get_windows()
+            .filter(w => !w.is_skip_taskbar());
+
+        if (windows.length === 0)
+            return;
+
+        if (!this._previewPopup) {
+            this._previewPopup = new DashWindowPreview.WindowPreviewPopup();
+            this._previewPopup.setCallbacks(
+                () => this._cancelPreviewTimeouts(),
+                () => this._queuePreviewHide());
+        }
+
+        this._previewPopup.openFor(appIcon, this._previewPlacement, windows);
+    }
+
+    _queuePreviewHide() {
+        this._cancelPreviewTimeouts();
+
+        if (!this._previewPopup?.visible)
+            return;
+
+        this._previewHideTimeoutId = GLib.timeout_add_once(GLib.PRIORITY_DEFAULT,
+            DASH_PREVIEW_HIDE_TIMEOUT, () => {
+                this._previewHideTimeoutId = 0;
+                this._closePreview();
+                return GLib.SOURCE_REMOVE;
+            });
+    }
+
+    _closePreview() {
+        this._cancelPreviewTimeouts();
+        this._previewPopup?.close();
+    }
+
+    _cancelPreviewTimeouts() {
+        if (this._previewShowTimeoutId) {
+            GLib.source_remove(this._previewShowTimeoutId);
+            this._previewShowTimeoutId = 0;
+        }
+
+        if (this._previewHideTimeoutId) {
+            GLib.source_remove(this._previewHideTimeoutId);
+            this._previewHideTimeoutId = 0;
         }
     }
 
@@ -755,6 +844,9 @@ export const Dash = GObject.registerClass({
         else
             this.add_style_class_name('dash-hide-running-indicator');
 
+        if (!settings.get_boolean('show-window-previews'))
+            this._closePreview();
+
         this._updateItemStyles();
         this._updateBackgroundStyle();
         this._adjustIconSize();
@@ -764,6 +856,10 @@ export const Dash = GObject.registerClass({
         // All connections below are owned by this actor; release them
         // explicitly so that a destroyed dash never receives signals (the
         // desktop dock rebuilds its dash when the dock edge changes).
+        this._cancelPreviewTimeouts();
+        this._previewPopup?.destroy();
+        this._previewPopup = null;
+
         this._settings?.disconnectObject(this);
         this._appSystem?.disconnectObject(this);
         AppFavorites.getAppFavorites().disconnectObject(this);

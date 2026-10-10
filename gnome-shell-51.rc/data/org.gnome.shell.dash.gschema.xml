@@ -47,6 +47,15 @@
       </description>
     </key>
 
+    <key name="show-window-previews" type="b">
+      <default>true</default>
+      <summary>Show window previews on hover</summary>
+      <description>
+        Whether hovering an application icon in the desktop dock shows a
+        thumbnail of each window of that application.
+      </description>
+    </key>
+
     <key name="icon-size" type="i">
       <default>64</default>
       <range min="32" max="128"/>

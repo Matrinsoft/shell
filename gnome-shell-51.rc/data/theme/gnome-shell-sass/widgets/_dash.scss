@@ -105,6 +105,51 @@ $dash_spacing: $base_margin * 0.5;
   }
 }
 
+// LingmoOS: window previews of the desktop dock
+.dash-window-preview-popup {
+  padding: $base_padding * 1.5;
+  border-radius: $modal_radius;
+  background-color: $system_overlay_bg_color;
+  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.4);
+
+  .dash-window-preview-list {
+    spacing: $base_padding;
+  }
+}
+
+.dash-window-thumbnail {
+  padding: $base_padding * 0.5;
+  border-radius: $base_padding;
+
+  &:hover,
+  &.focused {
+    background-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .dash-window-thumbnail-content {
+    border-radius: $base_padding * 0.75;
+    background-color: rgba(0, 0, 0, 0.35);
+  }
+
+  .dash-window-thumbnail-title {
+    padding-top: $base_padding * 0.5;
+    font-size: 9pt;
+    text-align: center;
+    color: $system_fg_color;
+  }
+
+  .dash-window-thumbnail-close {
+    padding: 2px;
+    margin: 4px;
+    border-radius: 99px;
+    background-color: rgba(0, 0, 0, 0.55);
+
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.25);
+    }
+  }
+}
+
 // LingmoOS: the persistent dash on the desktop
 .desktop-dash {
   .dash-background {
