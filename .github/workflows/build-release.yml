@@ -152,7 +152,7 @@ jobs:
                       mkdir -p "$(dirname "$dep_dir")"
                       git clone -q --no-checkout "$dep_url" "$dep_dir"
                       git -C "$dep_dir" checkout -q "$dep_revision"
-                      patch_dir=$(sed -n 's/^[[:space:]]*patch_directory[[:space:]]*=[[:space:]]*//p' "$wrap" | head -1)
+                      patch_dir=$(sed -n "s/^[[:space:]]*patch_directory[[:space:]]*=[[:space:]]*//p" "$wrap" | head -1)
                       if [ -n "$patch_dir" ] && [ -d "/src/$SOURCE0_ROOT/subprojects/packagefiles/$patch_dir" ]; then
                         cp -a "/src/$SOURCE0_ROOT/subprojects/packagefiles/$patch_dir/." "$dep_dir/"
                       fi
