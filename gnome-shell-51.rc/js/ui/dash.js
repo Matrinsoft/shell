@@ -760,6 +760,18 @@ export const Dash = GObject.registerClass({
         this._adjustIconSize();
     }
 
+    destroy() {
+        // All connections below are owned by this actor; release them
+        // explicitly so that a destroyed dash never receives signals (the
+        // desktop dock rebuilds its dash when the dock edge changes).
+        this._settings?.disconnectObject(this);
+        this._appSystem?.disconnectObject(this);
+        AppFavorites.getAppFavorites().disconnectObject(this);
+        Main.overview.disconnectObject(this);
+
+        super.destroy();
+    }
+
     _adjustIconSize() {
         // For the icon size, we only consider children which are "proper"
         // icons (i.e. ignoring drag placeholders) and which are not
