@@ -14,33 +14,9 @@ import St from 'gi://St';
 
 import * as Dash from './dash.js';
 import * as Main from './main.js';
+import {SizedActor} from './sizedActor.js';
 
 const DASH_SETTINGS_SCHEMA = 'org.gnome.shell.dash';
-
-// St widgets are sized by their parent layout manager; the actors below are
-// placed manually, so they report the size we give them.
-const SizedActor = GObject.registerClass(
-class SizedActor extends St.Widget {
-    _init(params = {}) {
-        super._init(params);
-        this._sizedWidth = 0;
-        this._sizedHeight = 0;
-    }
-
-    setSizedSize(width, height) {
-        this._sizedWidth = width;
-        this._sizedHeight = height;
-        this.queue_relayout();
-    }
-
-    vfunc_get_preferred_width() {
-        return [this._sizedWidth, this._sizedWidth];
-    }
-
-    vfunc_get_preferred_height() {
-        return [this._sizedHeight, this._sizedHeight];
-    }
-});
 
 const ANIMATION_TIME = 200;
 const AUTOHIDE_HIDE_TIMEOUT = 600;
@@ -92,17 +68,14 @@ class DesktopDash extends St.Widget {
 
         Main.layoutManager.addChrome(this, {
             affectsStruts: false,
-            affectsInputRegion: true,
             trackFullscreen: false,
         });
         Main.layoutManager.addChrome(this._strut, {
             affectsStruts: true,
-            affectsInputRegion: false,
             trackFullscreen: false,
         });
         Main.layoutManager.addChrome(this._trigger, {
             affectsStruts: false,
-            affectsInputRegion: true,
             trackFullscreen: false,
         });
 
@@ -150,9 +123,14 @@ class DesktopDash extends St.Widget {
             this._dash = null;
         }
 
+        const position = this._settings.get_string('dock-position');
+
         this._dash = new Dash.Dash({
             desktop: true,
             vertical: this._vertical,
+            previewPlacement: position === 'bottom'
+                ? 'above'
+                : position === 'left' ? 'right' : 'left',
         });
         this.add_child(this._dash);
 
