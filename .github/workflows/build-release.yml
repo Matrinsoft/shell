@@ -107,7 +107,7 @@ jobs:
                   *.tar.xz|*.tar.gz|*.tar.bz2|*.tar.zst)
                     ARCHIVE_TAR=$(mktemp)
                     DEPS_TMP=$(mktemp -d)
-                    git -C /src archive --format=tar --prefix="$SOURCE0_ROOT/" "$ARCHIVE_TREE" > "$ARCHIVE_TAR"
+                    tar -cf "$ARCHIVE_TAR" --exclude="$SOURCE0_ROOT/.git" -C /src "$SOURCE0_ROOT"
 
                     # Include git submodules and Meson wrap-git dependencies in Source0.
                     while read -r mode type revision dep_path; do
