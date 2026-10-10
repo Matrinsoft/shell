@@ -248,7 +248,11 @@ async function _initializeUI() {
 
     messageTray = new MessageTray.MessageTray();
     panel = new Panel.Panel();
-    desktopDash = new DesktopDash.DesktopDash();
+    try {
+        desktopDash = new DesktopDash.DesktopDash();
+    } catch (e) {
+        logError(e, 'Failed to create the desktop dash');
+    }
     keyboard = new Keyboard.KeyboardManager();
     notificationDaemon = new NotificationDaemon.NotificationDaemon();
     windowAttentionHandler = new WindowAttentionHandler.WindowAttentionHandler();

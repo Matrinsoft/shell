@@ -35,7 +35,6 @@ class DesktopDash extends St.Widget {
             visible: false,
         });
 
-        this._settings = new Gio.Settings({schema_id: DASH_SETTINGS_SCHEMA});
         this._dash = null;
         this._autohide = false;
         this._autohideRevealed = false;
@@ -66,6 +65,14 @@ class DesktopDash extends St.Widget {
                 this._queueHide();
         });
 
+        try {
+            this._settings = new Gio.Settings({schema_id: DASH_SETTINGS_SCHEMA});
+        } catch (e) {
+            // Schema not installed (stock gnome-shell): stay inert.
+            logError(e, 'Lingmo desktop dash: no org.gnome.shell.dash schema');
+            return;
+        }
+
         Main.layoutManager.addChrome(this, {
             affectsStruts: false,
             trackFullscreen: false,
@@ -91,8 +98,15 @@ class DesktopDash extends St.Widget {
         global.window_group.connectObject('notify::visible',
             () => this._sync(), this);
 
-        this._rebuild();
-        this._sync();
+        try {
+            this._rebuild();
+            this._sync();
+        } catch (e) {
+            // Never let the dock take the whole session down with it.
+            logError(e, 'Lingmo desktop dash: setup failed, disabling');
+            this.visible = false;
+            this._trigger.visible = false;
+        }
     }
 
     vfunc_get_preferred_width() {
